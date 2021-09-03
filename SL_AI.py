@@ -6,12 +6,8 @@ import pickle
 import copy
 
 import numpy as np
-import torch
-from torch.autograd import Variable
 import argparse
 import math
-import os
-from datetime import datetime
 
 from lib import ml_modules
 
