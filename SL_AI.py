@@ -23,141 +23,123 @@ class MJAI_Client():
                 self.scores = [25000, 25000, 25000, 25000]
                 self.reach = False
                 self.tehais = []
-                self.legal_actions = []
                 self.current_record = []
                 self.ai = None
+                self.id = 0
+                self.prev_tsumo = None
         
         def run(self):
                 while True:
-                        self.msg = self.socket.recv(1024).decode("utf-8")
-                        print("<-\t" + self.msg)
-                        self.action = json.loads(self.msg)
-                        if self.action["type"] == "hello":
-                                self.response = {"type":"join", "name":"SL_AI", "room":self.uri.path[1:]}
-                        elif self.action["type"] == "start_game":
-                                self.current_record.append(self.action)
-                                self.id = self.action["id"]
+                        msg = self.socket.recv(1024).decode("utf-8")
+                        print("<-\t" + msg)
+                        action = json.loads(msg)
+                        legal_actions = []
+                        if action["type"] == "hello":
+                                response = {"type":"join", "name":"SL_AI", "room":self.uri.path[1:]}
+                        elif action["type"] == "start_game":
+                                self.current_record.append(action)
+                                self.id = action["id"]
                                 self.ai = ml_modules.Supervised_AI(self.id, "SL")
-                                self.response = {"type":"none"}
-                        elif self.action["type"] == "start_kyoku":
-                                self.step_num = 0
-                                self.a = copy.deepcopy(self.action)
-                                self.a["scores"] = self.scores
-                                self.current_record.append(self.a)
-                                self.tehais = self.action["tehais"][self.id]
-                                self.episode = []
-                                self.response = {"type":"none"}
-                        elif self.action["type"] == "hora" or self.action["type"] == "ryukyoku":
+                                response = {"type":"none"}
+                        elif action["type"] == "start_kyoku":
+                                a = copy.deepcopy(action)
+                                a["scores"] = self.scores
+                                self.current_record.append(a)
+                                self.tehais = action["tehais"][self.id]
+                                response = {"type":"none"}
+                        elif action["type"] == "hora" or action["type"] == "ryukyoku":
                                 self.reach = False
-                                self.scores = self.action["scores"]
-                                self.current_record.append(self.action)
-                                self.response = {"type":"none"}
-                        elif self.action["type"] == "end_game":
-                                my_score = self.action["scores"][self.id]
-                                self.action["scores"].sort(reverse=True)
-                                self.my_rank = self.action["scores"].index(my_score) + 1
+                                self.scores = action["scores"]
+                                self.current_record.append(action)
+                                response = {"type":"none"}
+                        elif action["type"] == "end_game":
+                                my_score = action["scores"][self.id]
+                                action["scores"].sort(reverse=True)
+                                my_rank = action["scores"].index(my_score) + 1
                                 f = open('rank.txt','a')
-                                f.write(str(self.my_rank) + '\n')
+                                f.write(str(my_rank) + '\n')
                                 f.close()
                                 break
-                        elif self.action["type"] == "error":
+                        elif action["type"] == "error":
                                 break
-                        elif self.action["type"] == "tsumo" and self.action["actor"] == self.id:#dahai just after tsumo
-                                self.current_record.append(self.action)
-                                self.prev_tsumo = self.action["pai"]
-                                self.tehais.append(self.action["pai"])
-                                self.legal_actions = self.action["possible_actions"]
+                        elif action["type"] == "tsumo" and action["actor"] == self.id:#dahai just after tsumo
+                                self.current_record.append(action)
+                                self.prev_tsumo = action["pai"]
+                                self.tehais.append(action["pai"])
+                                legal_actions = action["possible_actions"]
                                 if self.reach:#after reach
-                                        self.legal_actions.append({"type":"dahai", "actor":self.id, "pai":self.action["pai"], "tsumogiri":True})
+                                        legal_actions.append({"type":"dahai", "actor":self.id, "pai":action["pai"], "tsumogiri":True})
                                 else:
                                         for i in range(len(self.tehais)):
-                                                self.legal_actions.append({"type":"dahai", "actor":self.id, "pai":self.tehais[i], "tsumogiri":i == len(self.tehais)-1})
+                                                legal_actions.append({"type":"dahai", "actor":self.id, "pai":self.tehais[i], "tsumogiri":i == len(self.tehais)-1})
 
-                                self.act = self.ai.choose_action(self.current_record, self.legal_actions)
+                                act = self.ai.choose_action(self.current_record, legal_actions)
 
-                                if self.act["type"] == "dahai" and (not self.reach):
-                                        if self.act["pai"] == "5mr" and "5m" in self.tehais:
-                                                self.act["pai"] = "5m"
-                                                self.act["tsumogiri"] = True if self.prev_tsumo == "5m" else False
-                                        if self.act["pai"] == "5pr" and "5p" in self.tehais:
-                                                self.act["pai"] = "5p"
-                                                self.act["tsumogiri"] = True if self.prev_tsumo == "5p" else False
-                                        if self.act["pai"] == "5sr" and "5s" in self.tehais:
-                                                self.act["pai"] = "5s"
-                                                self.act["tsumogiri"] = True if self.prev_tsumo == "5s" else False        
+                                if act["type"] == "dahai" and not self.reach:
+                                        if act["pai"][-1] == "r" and act["pai"][:2] in self.tehais:
+                                                act["pai"] = act["pai"][:2]
+                                                act["tsumogiri"] = True if self.prev_tsumo == act["pai"] else False
                 
-                                self.response = self.act
-                                self.legal_actions = []
-                        elif (self.action["type"] == "chi" or self.action["type"] == "pon") and self.action["actor"] == self.id:#dahai just after fuuro
-                                self.current_record.append(self.action)
-                                for hai in self.action["consumed"]:
+                                response = act
+                        elif (action["type"] == "chi" or action["type"] == "pon") and action["actor"] == self.id:#dahai just after fuuro
+                                self.current_record.append(action)
+                                for hai in action["consumed"]:
                                         self.tehais.remove(hai)
-                                self.can_dahai = copy.deepcopy(self.tehais)
-                                for hai in self.action["cannot_dahai"]:
-                                        self.can_dahai = [i for i in self.can_dahai if i != hai]
-                                for hai in self.can_dahai:
+                                can_dahai = copy.deepcopy(self.tehais)
+                                for hai in action["cannot_dahai"]:
+                                        can_dahai = [i for i in can_dahai if i != hai]
+                                for hai in can_dahai:
                                         self.legal_actions.append({"type":"dahai", "actor":self.id, "pai":hai, "tsumogiri":False})
 
-                                self.act = self.ai.choose_action(self.current_record, self.legal_actions)
+                                act = self.ai.choose_action(self.current_record, legal_actions)
                                         
-                                if self.act["pai"] == "5mr" and "5m" in self.tehais:
-                                        self.act["pai"] = "5m"
-                                if self.act["pai"] == "5pr" and "5p" in self.tehais:
-                                        self.act["pai"] = "5p"
-                                if self.act["pai"] == "5sr" and "5s" in self.tehais:
-                                        self.act["pai"] = "5s"
+                                if act["pai"][-1] == "r" and act["pai"][:2] in self.tehais:
+                                        act["pai"] = act["pai"][:2]
+                                        act["tsumogiri"] = True if self.prev_tsumo == act["pai"] else False
                 
-                                self.response = self.act
-                                self.legal_actions = []
+                                response = act
 
-                        elif self.action["type"] == "reach" and self.action["actor"] == self.id:#dahai just after reach
+                        elif action["type"] == "reach" and action["actor"] == self.id:#dahai just after reach
                                 self.reach = True
-                                self.current_record.append(self.action)
-                                self.can_dahai = copy.deepcopy(self.tehais)
-                                for hai in self.action["cannot_dahai"]:
-                                        self.can_dahai = [i for i in self.can_dahai if i != hai]
-                                for hai in self.can_dahai:
-                                        self.legal_actions.append({"type":"dahai", "actor":self.id, "pai":hai, "tsumogiri":hai == self.prev_tsumo})
+                                self.current_record.append(action)
+                                can_dahai = copy.deepcopy(self.tehais)
+                                for hai in action["cannot_dahai"]:
+                                        can_dahai = [i for i in can_dahai if i != hai]
+                                for hai in can_dahai:
+                                        legal_actions.append({"type":"dahai", "actor":self.id, "pai":hai, "tsumogiri":hai == self.prev_tsumo})
                                                 
-                                self.act = self.ai.choose_action(self.current_record, self.legal_actions)
+                                act = self.ai.choose_action(self.current_record, legal_actions)
 
-                                if self.act["pai"] == "5mr" and "5m" in self.tehais:
-                                        self.act["pai"] = "5m"
-                                        self.act["tsumogiri"] = True if self.prev_tsumo == "5m" else False
-                                if self.act["pai"] == "5pr" and "5p" in self.tehais:
-                                        self.act["pai"] = "5p"
-                                        self.act["tsumogiri"] = True if self.prev_tsumo == "5p" else False
-                                if self.act["pai"] == "5sr" and "5s" in self.tehais:
-                                        self.act["pai"] = "5s"
-                                        self.act["tsumogiri"] = True if self.prev_tsumo == "5s" else False
+                                if act["pai"][-1] == "r" and act["pai"][:2] in self.tehais:
+                                        act["pai"] = act["pai"][:2]
+                                        act["tsumogiri"] = True if self.prev_tsumo == act["pai"] else False
                 
-                                self.response = self.act
-                                self.legal_actions = []
+                                response = act
 
-                        elif (self.action["type"] == "dahai" or self.action["type"] == "kakan") and self.action["actor"] == self.id: #---tehai change---
-                                self.current_record.append(self.action)
-                                self.tehais.remove(self.action["pai"])
-                                self.response = {"type":"none"}
-                        elif (self.action["type"] == "daiminkan" or self.action["type"] == "ankan") and self.action["actor"] == self.id:
-                                self.current_record.append(self.action)
-                                for hai in self.action["consumed"]:
+                        elif (action["type"] == "dahai" or action["type"] == "kakan") and action["actor"] == self.id: #---tehai change---
+                                self.current_record.append(action)
+                                self.tehais.remove(action["pai"])
+                                response = {"type":"none"}
+                        elif (action["type"] == "daiminkan" or action["type"] == "ankan") and action["actor"] == self.id:
+                                self.current_record.append(action)
+                                for hai in action["consumed"]:
                                         self.tehais.remove(hai)
-                                self.response = {"type":"none"}
+                                response = {"type":"none"}
 
-                        elif self.action["type"] == "dahai" and self.action["actor"] != self.id:#fuuro
-                                self.current_record.append(self.action)
-                                if len(self.action["possible_actions"]) > 0:
-                                        self.legal_actions = self.action["possible_actions"]
-                                        self.response = self.ai.choose_action(self.current_record, self.legal_actions)
-                                        self.legal_actions = []
+                        elif action["type"] == "dahai" and action["actor"] != self.id:#fuuro
+                                self.current_record.append(action)
+                                if len(action["possible_actions"]) > 0:
+                                        legal_actions = action["possible_actions"]
+                                        response = self.ai.choose_action(self.current_record, legal_actions)
+                                        legal_actions = []
                                 else:
-                                        self.response = {"type":"none"}
+                                        response = {"type":"none"}
                         else:
-                                self.current_record.append(self.action)
-                                self.response = {"type":"none"}
+                                self.current_record.append(action)
+                                response = {"type":"none"}
                         #print("rec: ", current_record)
-                        print("->\t" + json.dumps(self.response))
-                        self.socket.sendall(bytes(json.dumps(self.response)+"\n", "utf-8"))
+                        print("->\t" + json.dumps(response))
+                        self.socket.sendall(bytes(json.dumps(response)+"\n", "utf-8"))
 
 if __name__ == "__main__":
         client = MJAI_Client()
